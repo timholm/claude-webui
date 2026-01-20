@@ -15,22 +15,9 @@ spec:
     spec:
       nodeSelector:
         kubernetes.io/hostname: rpi-1
-      initContainers:
-      - name: install-deps
-        image: node:20-alpine
-        workingDir: /app
-        command: ["/bin/sh", "-c", "cp /config/package.json /app/ && npm install --production"]
-        volumeMounts:
-        - name: app-dir
-          mountPath: /app
-        - name: package
-          mountPath: /config/package.json
-          subPath: package.json
       containers:
       - name: claude-webui
-        image: node:20-alpine
-        workingDir: /app
-        command: ["node", "server.js"]
+        image: 192.168.8.197:30500/claude-webui:v14
         ports:
         - containerPort: 3000
         env:
@@ -48,8 +35,6 @@ spec:
         - name: CMD_API_URL
           value: "http://cmd-api.default.svc.cluster.local"
         volumeMounts:
-        - name: app-dir
-          mountPath: /app
         - name: server-code
           mountPath: /app/server.js
           subPath: server.js
@@ -57,14 +42,9 @@ spec:
           mountPath: /app/public/index.html
           subPath: index.html
       volumes:
-      - name: app-dir
-        emptyDir: {}
       - name: server-code
         configMap:
           name: claude-webui-server
       - name: html-code
         configMap:
           name: claude-webui-html
-      - name: package
-        configMap:
-          name: claude-webui-package
