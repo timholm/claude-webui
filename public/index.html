@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>claude</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: monospace;
+      background: #0a0a0a;
+      color: #ccc;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 20px;
+      font-size: 14px;
+    }
+    .container {
+      width: 100%;
+      max-width: 900px;
+      display: flex;
+      flex-direction: column;
+      height: 100%;
+    }
+    .bar {
+      background: #111;
+      padding: 8px 12px;
+      display: flex;
+      gap: 8px;
+      border: 1px solid #333;
+      border-bottom: none;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+    .bar button {
+      background: #1a1a1a;
+      border: 1px solid #444;
+      color: #888;
+      padding: 4px 12px;
+      font-family: monospace;
+      font-size: 12px;
+      cursor: pointer;
+    }
+    .bar button:hover { background: #2a2a2a; color: #fff; }
+    .bar button.danger { border-color: #533; color: #a66; }
+    .bar button.danger:hover { background: #322; }
+    .bar .status { margin-left: auto; color: #555; font-size: 11px; }
+    .bar .status.ok { color: #6a6; }
+    .bar .status.err { color: #a66; }
+
+    .terminal {
+      flex: 1;
+      background: #000;
+      border: 1px solid #333;
+      padding: 12px;
+      overflow-y: auto;
+      white-space: pre-wrap;
+      word-wrap: break-word;
+      font-size: 13px;
+      line-height: 1.4;
+      min-height: 300px;
+      max-height: 60vh;
+    }
+
+    .input-bar {
+      background: #111;
+      border: 1px solid #333;
+      border-top: none;
+      padding: 8px 12px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .prompt { color: #6a6; }
+    #mobileInput {
+      flex: 1;
+      background: transparent;
+      border: none;
+      color: #fff;
+      font-family: monospace;
+      font-size: 14px;
+      outline: none;
+      caret-color: #6a6;
+    }
+
+    .keys {
+      background: #111;
+      padding: 8px 12px;
+      display: flex;
+      gap: 6px;
+      border: 1px solid #333;
+      border-top: none;
+      flex-wrap: wrap;
+    }
+    .keys button {
+      background: #1a1a1a;
+      border: 1px solid #333;
+      color: #666;
+      padding: 4px 10px;
+      font-family: monospace;
+      font-size: 11px;
+      cursor: pointer;
+    }
+    .keys button:hover { background: #2a2a2a; color: #fff; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="bar">
+      <button onclick="api('new')">new</button>
+      <button onclick="api('resume')">resume</button>
+      <button onclick="getOutput()">sync</button>
+      <button class="danger" onclick="key('ctrl-c')">^C</button>
+      <button onclick="api('kill')">kill</button>
+      <span class="status" id="status">ready</span>
+    </div>
+
+    <pre class="terminal" id="terminal" onclick="mobileInput.focus()">Claude Terminal
+───────────────
+[new]    start fresh session
+[resume] continue previous
+[^C]     interrupt
+[kill]   end session
+
+Just start typing. Keys go to Claude.
+Arrow keys navigate. Enter sends.</pre>
+
+    <div class="input-bar" onclick="mobileInput.focus()">
+      <span class="prompt">&gt;</span>
+      <input type="text" id="mobileInput" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
+    </div>
+
+    <div class="keys">
+      <button onclick="key('up')">↑</button>
+      <button onclick="key('down')">↓</button>
+      <button onclick="key('left')">←</button>
+      <button onclick="key('right')">→</button>
+      <button onclick="key('escape')">esc</button>
+      <button onclick="key('tab')">tab</button>
+      <button onclick="key('backspace')">bksp</button>
+      <button onclick="key('enter')">enter</button>
+    </div>
+  </div>
+
+  <script>
+    const B = window.location.pathname.replace(/\/?$/, '/');
+    const terminal = document.getElementById('terminal');
+    const input = document.getElementById('mobileInput');
+    const status = document.getElementById('status');
+
+    function st(t, c) {
+      status.textContent = t;
+      status.className = 'status ' + (c || '');
+    }
+
+    // Handle special keys on input
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        if (input.value) {
+          send(input.value);
+          input.value = '';
+          setTimeout(getOutput, 500);
+        } else {
+          key('enter');
+        }
+        return;
+      }
+
+      // Ctrl+C for interrupt (when no selection)
+      if ((e.ctrlKey || e.metaKey) && e.key === 'c' && !window.getSelection().toString()) {
+        e.preventDefault();
+        key('ctrl-c');
+        return;
+      }
+    });
+
+    // Global keys when input not focused
+    document.addEventListener('keydown', (e) => {
+      if (document.activeElement === input) return;
+
+      const navKeys = {
+        'ArrowUp': 'up', 'ArrowDown': 'down',
+        'ArrowLeft': 'left', 'ArrowRight': 'right',
+        'Escape': 'escape', 'Tab': 'tab'
+      };
+
+      if (navKeys[e.key]) {
+        e.preventDefault();
+        key(navKeys[e.key]);
+        return;
+      }
+
+      if (e.key === ' ') {
+        e.preventDefault();
+        key('space');
+        return;
+      }
+
+      // Focus input for typing
+      if (e.key.length === 1 && !e.ctrlKey && !e.metaKey) {
+        input.focus();
+      }
+    });
+
+    async function api(e) {
+      st(e + '...', '');
+      try {
+        const r = await fetch(B + 'api/' + e, { method: 'POST' });
+        const d = await r.json();
+        st(d.ok ? 'ok' : (d.error || 'err'), d.ok ? 'ok' : 'err');
+        if (d.ok) setTimeout(getOutput, 1500);
+      } catch (e) { st('err', 'err'); }
+    }
+
+    async function send(text) {
+      st('send...', '');
+      try {
+        const r = await fetch(B + 'api/send', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ text })
+        });
+        const d = await r.json();
+        st(d.ok ? 'sent' : 'err', d.ok ? 'ok' : 'err');
+      } catch (e) { st('err', 'err'); }
+    }
+
+    async function key(k) {
+      st(k, '');
+      try {
+        const r = await fetch(B + 'api/key', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ key: k })
+        });
+        const d = await r.json();
+        st(d.ok ? 'ok' : 'err', d.ok ? 'ok' : 'err');
+        if (d.ok) setTimeout(getOutput, 200);
+      } catch (e) { st('err', 'err'); }
+    }
+
+    async function getOutput() {
+      st('sync...', '');
+      try {
+        const r = await fetch(B + 'api/output');
+        const d = await r.json();
+        if (d.ok && d.output) {
+          terminal.textContent = d.output;
+          st('synced', 'ok');
+        } else {
+          st('err', 'err');
+        }
+      } catch (e) { st('err', 'err'); }
+    }
+  </script>
+</body>
+</html>
