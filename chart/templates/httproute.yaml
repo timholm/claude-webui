@@ -1,0 +1,28 @@
+{{- if .Values.httpRoute.enabled }}
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: {{ include "claude-webui.fullname" . }}
+  labels:
+    {{- include "claude-webui.labels" . | nindent 4 }}
+spec:
+  hostnames:
+  - {{ .Values.httpRoute.hostname }}
+  parentRefs:
+  - name: {{ .Values.httpRoute.gateway.name }}
+    namespace: {{ .Values.httpRoute.gateway.namespace }}
+  rules:
+  - matches:
+    - path:
+        type: PathPrefix
+        value: {{ .Values.httpRoute.path }}
+    filters:
+    - type: URLRewrite
+      urlRewrite:
+        path:
+          type: ReplacePrefixMatch
+          replacePrefixMatch: /
+    backendRefs:
+    - name: {{ include "claude-webui.fullname" . }}
+      port: {{ .Values.service.port }}
+{{- end }}

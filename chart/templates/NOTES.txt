@@ -1,0 +1,31 @@
+Claude WebUI has been deployed!
+
+{{- if .Values.httpRoute.enabled }}
+
+Access the application at:
+  https://{{ .Values.httpRoute.hostname }}{{ .Values.httpRoute.path }}
+
+{{- else }}
+
+To access the application, run:
+  kubectl port-forward svc/{{ include "claude-webui.fullname" . }} 8080:{{ .Values.service.port }} -n {{ .Release.Namespace }}
+
+Then open: http://localhost:8080
+
+{{- end }}
+
+API Endpoints:
+  POST /api/new     - Start new Claude session
+  POST /api/resume  - Resume previous session
+  POST /api/send    - Send text to Claude
+  POST /api/key     - Send key (up/down/enter/tab/etc)
+  GET  /api/output  - Get terminal output
+  GET  /api/status  - Check connection status
+
+{{- if not .Values.ssh.createSecret }}
+
+NOTE: You need to create the SSH secret manually:
+  kubectl create secret generic {{ .Values.ssh.secretName }} \
+    --from-literal={{ .Values.ssh.secretKey }}='YOUR_SSH_PASSWORD' \
+    -n {{ .Release.Namespace }}
+{{- end }}

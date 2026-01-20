@@ -1,0 +1,49 @@
+# Claude WebUI Helm Chart Values
+
+replicaCount: 1
+
+image:
+  repository: 192.168.8.197:30500/claude-webui
+  tag: "v14"
+  pullPolicy: IfNotPresent
+
+# Node selector for scheduling
+nodeSelector:
+  kubernetes.io/hostname: rpi-1
+
+# SSH connection settings
+ssh:
+  host: "192.168.8.116"
+  user: "tim"
+  # Password is stored in secret, not here
+  secretName: "claude-webui-secret"
+  secretKey: "ssh-password"
+
+# CMD API settings
+cmdApi:
+  # Use ClusterIP directly due to DNS issues on Pi
+  url: "http://10.43.215.37"
+
+# Service configuration
+service:
+  type: ClusterIP
+  port: 80
+  targetPort: 3000
+
+# Ingress via Gateway API HTTPRoute
+httpRoute:
+  enabled: true
+  hostname: "holm.chat"
+  path: "/claude"
+  gateway:
+    name: "main-gateway"
+    namespace: "envoy-gateway-system"
+
+# Resource limits (optional)
+resources: {}
+  # limits:
+  #   cpu: 100m
+  #   memory: 128Mi
+  # requests:
+  #   cpu: 50m
+  #   memory: 64Mi

@@ -1,0 +1,62 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "claude-webui.fullname" . }}
+  labels:
+    {{- include "claude-webui.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "claude-webui.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      annotations:
+        checksum/config-server: {{ include (print $.Template.BasePath "/configmap-server.yaml") . | sha256sum }}
+        checksum/config-html: {{ include (print $.Template.BasePath "/configmap-html.yaml") . | sha256sum }}
+      labels:
+        {{- include "claude-webui.selectorLabels" . | nindent 8 }}
+    spec:
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+      - name: {{ .Chart.Name }}
+        image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+        imagePullPolicy: {{ .Values.image.pullPolicy }}
+        ports:
+        - containerPort: {{ .Values.service.targetPort }}
+          protocol: TCP
+        env:
+        - name: PORT
+          value: "{{ .Values.service.targetPort }}"
+        - name: SSH_HOST
+          value: "{{ .Values.ssh.host }}"
+        - name: SSH_USER
+          value: "{{ .Values.ssh.user }}"
+        - name: SSH_PASS
+          valueFrom:
+            secretKeyRef:
+              name: {{ .Values.ssh.secretName }}
+              key: {{ .Values.ssh.secretKey }}
+        - name: CMD_API_URL
+          value: "{{ .Values.cmdApi.url }}"
+        volumeMounts:
+        - name: server-code
+          mountPath: /app/server.js
+          subPath: server.js
+        - name: html-code
+          mountPath: /app/public/index.html
+          subPath: index.html
+        {{- with .Values.resources }}
+        resources:
+          {{- toYaml . | nindent 10 }}
+        {{- end }}
+      volumes:
+      - name: server-code
+        configMap:
+          name: {{ include "claude-webui.fullname" . }}-server
+      - name: html-code
+        configMap:
+          name: {{ include "claude-webui.fullname" . }}-html

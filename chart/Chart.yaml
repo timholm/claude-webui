@@ -1,0 +1,9 @@
+apiVersion: v2
+name: claude-webui
+description: Low-bandwidth terminal interface for Claude CLI via SSH/tmux
+type: application
+version: 1.0.0
+appVersion: "1.0.0"
+maintainers:
+  - name: timholm
+    url: https://github.com/timholm
