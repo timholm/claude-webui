@@ -33,7 +33,7 @@ spec:
               name: claude-webui-secret
               key: ssh-password
         - name: CMD_API_URL
-          value: "http://cmd-api.default.svc.cluster.local"
+          value: "http://10.43.215.37"
         volumeMounts:
         - name: server-code
           mountPath: /app/server.js
