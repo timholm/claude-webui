@@ -22,7 +22,7 @@ ssh:
 # CMD API settings
 cmdApi:
   # Use ClusterIP directly due to DNS issues on Pi
-  url: "http://10.43.215.37"
+  url: "http://10.43.170.9"
 
 # Service configuration
 service:
