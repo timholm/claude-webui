@@ -1,0 +1,70 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: claude-webui
+  namespace: claude-webui
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: claude-webui
+  template:
+    metadata:
+      labels:
+        app: claude-webui
+    spec:
+      nodeSelector:
+        kubernetes.io/hostname: rpi-1
+      initContainers:
+      - name: install-deps
+        image: node:20-alpine
+        workingDir: /app
+        command: ["/bin/sh", "-c", "cp /config/package.json /app/ && npm install --production"]
+        volumeMounts:
+        - name: app-dir
+          mountPath: /app
+        - name: package
+          mountPath: /config/package.json
+          subPath: package.json
+      containers:
+      - name: claude-webui
+        image: node:20-alpine
+        workingDir: /app
+        command: ["node", "server.js"]
+        ports:
+        - containerPort: 3000
+        env:
+        - name: PORT
+          value: "3000"
+        - name: SSH_HOST
+          value: "192.168.8.116"
+        - name: SSH_USER
+          value: "tim"
+        - name: SSH_PASS
+          valueFrom:
+            secretKeyRef:
+              name: claude-webui-secret
+              key: ssh-password
+        - name: CMD_API_URL
+          value: "http://cmd-api.default.svc.cluster.local"
+        volumeMounts:
+        - name: app-dir
+          mountPath: /app
+        - name: server-code
+          mountPath: /app/server.js
+          subPath: server.js
+        - name: html-code
+          mountPath: /app/public/index.html
+          subPath: index.html
+      volumes:
+      - name: app-dir
+        emptyDir: {}
+      - name: server-code
+        configMap:
+          name: claude-webui-server
+      - name: html-code
+        configMap:
+          name: claude-webui-html
+      - name: package
+        configMap:
+          name: claude-webui-package
