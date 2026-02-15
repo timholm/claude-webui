@@ -38,7 +38,7 @@ httpRoute:
   path: "/claude"
   gateway:
     name: "main-gateway"
-    namespace: "envoy-gateway-system"
+    namespace: "default"
 
 # Resource limits (optional)
 resources: {}
