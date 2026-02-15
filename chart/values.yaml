@@ -23,7 +23,7 @@ ssh:
 
 # CMD API settings
 cmdApi:
-  url: "http://cmd-api.default.svc.cluster.local"
+  url: "http://cmd-api.default.svc.cluster.local."
 
 # Service configuration
 service:
