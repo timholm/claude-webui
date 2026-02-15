@@ -3,13 +3,15 @@
 replicaCount: 1
 
 image:
-  repository: 192.168.8.197:30500/claude-webui
-  tag: "v14"
+  repository: node
+  tag: "20-alpine"
   pullPolicy: IfNotPresent
 
-# Node selector for scheduling
-nodeSelector:
-  kubernetes.io/hostname: rpi-1
+# Command to install deps and start server
+command: ["sh", "-c", "cd /app && npm install express 2>/dev/null && node server.js"]
+
+# Node selector for scheduling (empty = schedule anywhere)
+nodeSelector: {}
 
 # SSH connection settings
 ssh:
@@ -21,8 +23,7 @@ ssh:
 
 # CMD API settings
 cmdApi:
-  # Use ClusterIP directly due to DNS issues on Pi
-  url: "http://10.43.170.9"
+  url: "http://cmd-api.default.svc.cluster.local"
 
 # Service configuration
 service:
