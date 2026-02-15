@@ -219,8 +219,12 @@ app.get('/health', (req, res) => {
   res.json({ ok: true, api: CMD_API });
 });
 
-app.listen(PORT, '0.0.0.0', () => {
-  console.log(`Claude Web API v2.0 on port ${PORT}`);
-  console.log(`CMD API: ${CMD_API}`);
-  console.log(`SSH: ${SSH_USER}@${SSH_HOST}`);
-});
+if (require.main === module) {
+  app.listen(PORT, '0.0.0.0', () => {
+    console.log(`Claude Web API v2.0 on port ${PORT}`);
+    console.log(`CMD API: ${CMD_API}`);
+    console.log(`SSH: ${SSH_USER}@${SSH_HOST}`);
+  });
+}
+
+module.exports = { app, hash };
