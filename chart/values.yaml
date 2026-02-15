@@ -7,8 +7,8 @@ image:
   tag: "20-alpine"
   pullPolicy: IfNotPresent
 
-# Command to install deps and start server (copy from configmap mounts to writable dir)
-command: ["sh", "-c", "mkdir -p /tmp/app/public && cp /app/server.js /tmp/app/ && cp /app/public/index.html /tmp/app/public/ && cd /tmp/app && npm install express && node server.js"]
+# Command to start server (copy from configmap mounts to writable dir, no npm needed)
+command: ["sh", "-c", "mkdir -p /tmp/app/public && cp /app/server.js /tmp/app/ && cp /app/public/index.html /tmp/app/public/ && cd /tmp/app && node server.js"]
 
 # Node selector for scheduling (empty = schedule anywhere)
 nodeSelector: {}
