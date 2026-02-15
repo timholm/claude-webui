@@ -24,6 +24,58 @@
       flex-direction: column;
       height: 100%;
     }
+    .settings {
+      background: #0d0d0d;
+      border: 1px solid #333;
+      border-bottom: none;
+      padding: 10px 12px;
+      display: none;
+    }
+    .settings.open { display: block; }
+    .settings h3 { color: #888; font-size: 12px; margin-bottom: 8px; }
+    .settings-row {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 6px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+    .settings-row label {
+      color: #666;
+      font-size: 11px;
+      width: 60px;
+      text-align: right;
+    }
+    .settings-row input {
+      flex: 1;
+      min-width: 120px;
+      background: #111;
+      border: 1px solid #333;
+      color: #ccc;
+      padding: 4px 8px;
+      font-family: monospace;
+      font-size: 12px;
+      outline: none;
+    }
+    .settings-row input:focus { border-color: #555; }
+    .settings-row button {
+      background: #1a3a1a;
+      border: 1px solid #2a5a2a;
+      color: #6a6;
+      padding: 4px 14px;
+      font-family: monospace;
+      font-size: 12px;
+      cursor: pointer;
+    }
+    .settings-row button:hover { background: #2a4a2a; color: #8c8; }
+    .conn-status {
+      font-size: 11px;
+      padding: 4px 0;
+    }
+    .conn-status.ok { color: #6a6; }
+    .conn-status.err { color: #a66; }
+    .conn-status.pending { color: #aa6; }
+
     .bar {
       background: #111;
       padding: 8px 12px;
@@ -46,6 +98,8 @@
     .bar button:hover { background: #2a2a2a; color: #fff; }
     .bar button.danger { border-color: #533; color: #a66; }
     .bar button.danger:hover { background: #322; }
+    .bar button.settings-btn { border-color: #353; color: #686; }
+    .bar button.settings-btn.active { background: #1a2a1a; color: #6a6; border-color: #4a4; }
     .bar .status { margin-left: auto; color: #555; font-size: 11px; }
     .bar .status.ok { color: #6a6; }
     .bar .status.err { color: #a66; }
@@ -108,7 +162,24 @@
 </head>
 <body>
   <div class="container">
+    <div class="settings" id="settingsPanel">
+      <h3>SSH Connection</h3>
+      <div class="settings-row">
+        <label>host</label>
+        <input type="text" id="sshHost" placeholder="192.168.8.116">
+        <label>user</label>
+        <input type="text" id="sshUser" placeholder="tim">
+      </div>
+      <div class="settings-row">
+        <label>pass</label>
+        <input type="password" id="sshPass" placeholder="password">
+        <button onclick="saveConfig()">connect</button>
+      </div>
+      <div class="conn-status" id="connStatus"></div>
+    </div>
+
     <div class="bar">
+      <button class="settings-btn" id="settingsBtn" onclick="toggleSettings()">ssh</button>
       <button onclick="api('new')">new</button>
       <button onclick="api('resume')">resume</button>
       <button onclick="getOutput()">sync</button>
@@ -118,14 +189,12 @@
     </div>
 
     <pre class="terminal" id="terminal" onclick="mobileInput.focus()">Claude Terminal
-───────────────
-[new]    start fresh session
-[resume] continue previous
-[^C]     interrupt
-[kill]   end session
-
-Just start typing. Keys go to Claude.
-Arrow keys navigate. Enter sends.</pre>
+---
+Configure SSH connection first:
+  1. Click [ssh] to open settings
+  2. Enter host IP, username, password
+  3. Click [connect] to test
+  4. Then [new] to start Claude</pre>
 
     <div class="input-bar" onclick="mobileInput.focus()">
       <span class="prompt">&gt;</span>
@@ -133,10 +202,10 @@ Arrow keys navigate. Enter sends.</pre>
     </div>
 
     <div class="keys">
-      <button onclick="key('up')">↑</button>
-      <button onclick="key('down')">↓</button>
-      <button onclick="key('left')">←</button>
-      <button onclick="key('right')">→</button>
+      <button onclick="key('up')">up</button>
+      <button onclick="key('down')">dn</button>
+      <button onclick="key('left')">lt</button>
+      <button onclick="key('right')">rt</button>
       <button onclick="key('escape')">esc</button>
       <button onclick="key('tab')">tab</button>
       <button onclick="key('backspace')">bksp</button>
@@ -147,29 +216,101 @@ Arrow keys navigate. Enter sends.</pre>
   <script>
     const B = window.location.pathname.replace(/\/?$/, '/');
     const terminal = document.getElementById('terminal');
-    const input = document.getElementById('mobileInput');
+    const inp = document.getElementById('mobileInput');
     const status = document.getElementById('status');
+    const settingsPanel = document.getElementById('settingsPanel');
+    const settingsBtn = document.getElementById('settingsBtn');
+    const connStatus = document.getElementById('connStatus');
 
     function st(t, c) {
       status.textContent = t;
       status.className = 'status ' + (c || '');
     }
 
-    // Handle special keys on input
-    input.addEventListener('keydown', (e) => {
+    function toggleSettings() {
+      settingsPanel.classList.toggle('open');
+      settingsBtn.classList.toggle('active');
+    }
+
+    // Load saved config from localStorage
+    function loadSaved() {
+      const saved = localStorage.getItem('claude-ssh');
+      if (saved) {
+        try {
+          const c = JSON.parse(saved);
+          document.getElementById('sshHost').value = c.host || '';
+          document.getElementById('sshUser').value = c.user || '';
+          document.getElementById('sshPass').value = c.pass || '';
+        } catch {}
+      }
+    }
+
+    async function saveConfig() {
+      const host = document.getElementById('sshHost').value.trim();
+      const user = document.getElementById('sshUser').value.trim();
+      const pass = document.getElementById('sshPass').value;
+
+      if (!host || !user) {
+        connStatus.textContent = 'host and user required';
+        connStatus.className = 'conn-status err';
+        return;
+      }
+
+      connStatus.textContent = 'connecting...';
+      connStatus.className = 'conn-status pending';
+
+      try {
+        const r = await fetch(B + 'api/config', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ host, user, pass })
+        });
+        const d = await r.json();
+
+        if (d.ok) {
+          connStatus.textContent = 'connected to ' + user + '@' + host;
+          connStatus.className = 'conn-status ok';
+          localStorage.setItem('claude-ssh', JSON.stringify({ host, user, pass }));
+          st('connected', 'ok');
+          terminal.textContent = 'Connected to ' + user + '@' + host + '\n---\n[new]    start fresh Claude session\n[resume] continue previous session\n[^C]     interrupt\n[kill]   end session';
+        } else {
+          connStatus.textContent = 'failed: ' + (d.error || 'unknown error');
+          connStatus.className = 'conn-status err';
+          st('not connected', 'err');
+        }
+      } catch (e) {
+        connStatus.textContent = 'error: ' + e.message;
+        connStatus.className = 'conn-status err';
+      }
+    }
+
+    // Auto-connect on load if saved
+    async function autoConnect() {
+      loadSaved();
+      const host = document.getElementById('sshHost').value;
+      const user = document.getElementById('sshUser').value;
+      const pass = document.getElementById('sshPass').value;
+      if (host && user && pass) {
+        await saveConfig();
+      } else {
+        // Show settings panel if no saved config
+        settingsPanel.classList.add('open');
+        settingsBtn.classList.add('active');
+      }
+    }
+
+    inp.addEventListener('keydown', (e) => {
       if (e.key === 'Enter') {
         e.preventDefault();
-        if (input.value) {
-          send(input.value);
-          input.value = '';
+        if (inp.value) {
+          send(inp.value);
+          inp.value = '';
           setTimeout(getOutput, 500);
         } else {
           key('enter');
         }
         return;
       }
-
-      // Ctrl+C for interrupt (when no selection)
       if ((e.ctrlKey || e.metaKey) && e.key === 'c' && !window.getSelection().toString()) {
         e.preventDefault();
         key('ctrl-c');
@@ -177,31 +318,27 @@ Arrow keys navigate. Enter sends.</pre>
       }
     });
 
-    // Global keys when input not focused
     document.addEventListener('keydown', (e) => {
-      if (document.activeElement === input) return;
+      if (document.activeElement === inp) return;
+      if (document.activeElement.tagName === 'INPUT') return;
 
       const navKeys = {
         'ArrowUp': 'up', 'ArrowDown': 'down',
         'ArrowLeft': 'left', 'ArrowRight': 'right',
         'Escape': 'escape', 'Tab': 'tab'
       };
-
       if (navKeys[e.key]) {
         e.preventDefault();
         key(navKeys[e.key]);
         return;
       }
-
       if (e.key === ' ') {
         e.preventDefault();
         key('space');
         return;
       }
-
-      // Focus input for typing
       if (e.key.length === 1 && !e.ctrlKey && !e.metaKey) {
-        input.focus();
+        inp.focus();
       }
     });
 
@@ -251,10 +388,12 @@ Arrow keys navigate. Enter sends.</pre>
           terminal.textContent = d.output;
           st('synced', 'ok');
         } else {
-          st('err', 'err');
+          st(d.error || 'no output', d.ok ? '' : 'err');
         }
       } catch (e) { st('err', 'err'); }
     }
+
+    autoConnect();
   </script>
 </body>
 </html>

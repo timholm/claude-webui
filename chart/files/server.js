@@ -4,17 +4,20 @@ const path = require('path');
 const { URL } = require('url');
 
 const PORT = process.env.PORT || 3000;
-const CMD_API = process.env.CMD_API_URL || 'http://cmd-api.default.svc.cluster.local';
-const SSH_HOST = process.env.SSH_HOST || '192.168.8.116';
-const SSH_USER = process.env.SSH_USER || 'tim';
-const SSH_PASS = process.env.SSH_PASS || '';
-const CLAUDE_BIN = '/Users/tim/.local/bin/claude --dangerously-skip-permissions';
+const CMD_API = process.env.CMD_API_URL || 'http://cmd-api.default.svc.cluster.local.';
 const TMUX = 'claude-ui';
+
+// Current SSH connection (set from UI or env defaults)
+let sshConfig = {
+  host: process.env.SSH_HOST || '',
+  user: process.env.SSH_USER || '',
+  pass: process.env.SSH_PASS || '',
+  claudeBin: 'claude --dangerously-skip-permissions'
+};
 
 let lastOutputHash = '';
 let lastOutput = '';
 
-// Parse JSON body
 function parseBody(req) {
   return new Promise((resolve) => {
     let body = '';
@@ -25,24 +28,25 @@ function parseBody(req) {
   });
 }
 
-// Send JSON response
 function json(res, data) {
   const str = JSON.stringify(data);
   res.writeHead(200, { 'Content-Type': 'application/json' });
   res.end(str);
 }
 
-// SSH command helper via cmd-api
 async function ssh(cmd) {
+  if (!sshConfig.host || !sshConfig.user) {
+    return { ok: false, error: 'SSH not configured. Set host/user/password in settings.' };
+  }
   const fullCmd = `export PATH=/opt/homebrew/bin:/usr/local/bin:$HOME/.local/bin:$PATH && ${cmd}`;
   try {
     const res = await fetch(`${CMD_API}/ssh`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        host: SSH_HOST,
-        username: SSH_USER,
-        password: SSH_PASS,
+        host: sshConfig.host,
+        username: sshConfig.user,
+        password: sshConfig.pass,
         command: fullCmd,
         port: 22
       })
@@ -69,12 +73,10 @@ const server = http.createServer(async (req, res) => {
   const pathname = parsed.pathname;
   const method = req.method;
 
-  // Health check
   if (method === 'GET' && pathname === '/health') {
     return json(res, { ok: true, api: CMD_API });
   }
 
-  // Serve static index.html
   if (method === 'GET' && (pathname === '/' || pathname === '/index.html')) {
     try {
       const html = fs.readFileSync(path.join(__dirname, 'public', 'index.html'), 'utf8');
@@ -86,12 +88,42 @@ const server = http.createServer(async (req, res) => {
     }
   }
 
+  // GET /api/config - get current SSH config (without password)
+  if (method === 'GET' && pathname === '/api/config') {
+    return json(res, {
+      host: sshConfig.host,
+      user: sshConfig.user,
+      hasPassword: !!sshConfig.pass,
+      claudeBin: sshConfig.claudeBin
+    });
+  }
+
+  // POST /api/config - update SSH config
+  if (method === 'POST' && pathname === '/api/config') {
+    const body = await parseBody(req);
+    if (body.host !== undefined) sshConfig.host = body.host;
+    if (body.user !== undefined) sshConfig.user = body.user;
+    if (body.pass !== undefined) sshConfig.pass = body.pass;
+    if (body.claudeBin !== undefined) sshConfig.claudeBin = body.claudeBin;
+    console.log(`[API] Config updated: ${sshConfig.user}@${sshConfig.host}`);
+    // Test connection
+    const result = await ssh('echo OK');
+    return json(res, {
+      ok: result.ok,
+      host: sshConfig.host,
+      user: sshConfig.user,
+      error: result.error || null
+    });
+  }
+
   // GET /api/status
   if (method === 'GET' && pathname === '/api/status') {
     const result = await ssh(`tmux has-session -t ${TMUX} 2>/dev/null && echo ACTIVE || echo NONE`);
     return json(res, {
       connected: result.ok,
       session: result.ok ? result.stdout.trim() : 'ERROR',
+      host: sshConfig.host,
+      user: sshConfig.user,
       error: result.error || null
     });
   }
@@ -100,7 +132,7 @@ const server = http.createServer(async (req, res) => {
   if (method === 'POST' && pathname === '/api/new') {
     console.log('[API] POST /api/new');
     await ssh(`tmux kill-session -t ${TMUX} 2>/dev/null || true`);
-    const result = await ssh(`tmux new-session -d -s ${TMUX} -x 200 -y 50 && sleep 0.5 && tmux send-keys -t ${TMUX} '${CLAUDE_BIN}' Enter`);
+    const result = await ssh(`tmux new-session -d -s ${TMUX} -x 200 -y 50 && sleep 0.5 && tmux send-keys -t ${TMUX} '${sshConfig.claudeBin}' Enter`);
     if (result.ok) {
       console.log('[API] New session started');
       return json(res, { ok: true, message: 'Session started' });
@@ -114,7 +146,7 @@ const server = http.createServer(async (req, res) => {
   if (method === 'POST' && pathname === '/api/resume') {
     console.log('[API] POST /api/resume');
     await ssh(`tmux kill-session -t ${TMUX} 2>/dev/null || true`);
-    const result = await ssh(`tmux new-session -d -s ${TMUX} -x 200 -y 50 && sleep 0.5 && tmux send-keys -t ${TMUX} '${CLAUDE_BIN} --resume' Enter`);
+    const result = await ssh(`tmux new-session -d -s ${TMUX} -x 200 -y 50 && sleep 0.5 && tmux send-keys -t ${TMUX} '${sshConfig.claudeBin} --resume' Enter`);
     if (result.ok) {
       console.log('[API] Resume session started');
       return json(res, { ok: true, message: 'Resume started' });
@@ -170,7 +202,6 @@ const server = http.createServer(async (req, res) => {
     const maxWait = 10000;
     const checkInterval = 1000;
     const startTime = Date.now();
-    console.log('[API] GET /api/poll hash:', clientHash);
 
     const check = async () => {
       const result = await ssh(`tmux capture-pane -t ${TMUX} -p -S -100`);
@@ -180,11 +211,9 @@ const server = http.createServer(async (req, res) => {
       if (outputHash !== clientHash || !clientHash) {
         lastOutput = output;
         lastOutputHash = outputHash;
-        console.log('[API] Poll: output changed');
         return json(res, { ok: true, output, hash: outputHash, changed: true });
       }
       if (Date.now() - startTime >= maxWait) {
-        console.log('[API] Poll: timeout, no change');
         return json(res, { ok: true, output: '', hash: clientHash, changed: false });
       }
       setTimeout(check, checkInterval);
@@ -199,7 +228,6 @@ const server = http.createServer(async (req, res) => {
     return json(res, { ok: true });
   }
 
-  // 404
   res.writeHead(404, { 'Content-Type': 'application/json' });
   res.end(JSON.stringify({ error: 'Not found' }));
 });
@@ -207,5 +235,4 @@ const server = http.createServer(async (req, res) => {
 server.listen(PORT, '0.0.0.0', () => {
   console.log(`Claude Web API v2.0 on port ${PORT}`);
   console.log(`CMD API: ${CMD_API}`);
-  console.log(`SSH: ${SSH_USER}@${SSH_HOST}`);
 });
