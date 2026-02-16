@@ -13,6 +13,10 @@ command: ["sh", "-c", "mkdir -p /tmp/app/public && cp /app/server.js /tmp/app/ &
 # Node selector for scheduling (empty = schedule anywhere)
 nodeSelector: {}
 
+# Avoid rpi-1 (broken CNI loopback plugin)
+excludeNodes:
+  - rpi-1
+
 # SSH connection settings
 ssh:
   host: "192.168.8.116"
